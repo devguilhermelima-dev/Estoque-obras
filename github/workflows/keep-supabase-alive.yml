@@ -1,1 +1,18 @@
+name: Manter Supabase ativo
+
+on:
+  schedule:
+    - cron: '0 12 * * 1,4'  # toda segunda e quinta-feira às 12:00 UTC
+  workflow_dispatch:          # também pode ser disparado manualmente pela aba Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fazer uma requisição simples ao Supabase
+        run: |
+          curl -s -o /dev/null -w "Status: %{http_code}\n" \
+            "https://rnfyancftrwxfehfxaur.supabase.co/rest/v1/obras?select=id&limit=1" \
+            -H "apikey: sb_publishable_06XgkXtUdsqKTsDn8skzqg_GFTxgxVT" \
+            -H "Authorization: Bearer sb_publishable_06XgkXtUdsqKTsDn8skzqg_GFTxgxVT"
 
