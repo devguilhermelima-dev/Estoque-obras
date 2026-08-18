@@ -1,0 +1,1704 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<!-- VERSAO-APP: 2026-08-17-DETALHE-v2 -->
+<!-- Se você está lendo isso e o app não se comporta como o Claude descreveu,
+     confirme com ele se este número de versão bate com o esperado. -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Estoque — Almoxarifado</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<style>
+  :root{
+    --ink:#1D1D1B; --steel:#3E4A48; --steel-light:#61706D;
+    --paper:#EEF2F0; --paper-dim:#DEE6E2; --card:#F8FAF9; --line:#C9D3CF;
+    --safety:#C4460C; --caution:#357C8E; --ok:#48A056; --white:#FFFFFF; --radius:2px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::selection{background:var(--caution);color:var(--ink);}
+
+  header{background:var(--ink);color:var(--paper);padding:22px 24px 18px;position:relative;overflow:hidden;}
+  header::after{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;
+    background:repeating-linear-gradient(45deg,var(--caution) 0 10px, transparent 10px 20px);opacity:.14;transform:rotate(12deg);}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--caution);margin:0 0 4px;}
+  h1{font-family:'Poppins',sans-serif;font-weight:800;font-size:clamp(28px,5vw,40px);letter-spacing:.01em;margin:0;text-transform:uppercase;line-height:1;}
+  .sub{font-size:13px;color:var(--paper-dim);margin-top:8px;max-width:560px;}
+  .header-row{display:flex;align-items:center;gap:16px;position:relative;z-index:1;flex-wrap:wrap;}
+  .brand-plate{
+    background:var(--paper);
+    border-radius:6px;
+    padding:8px 14px;
+    display:inline-flex;
+    align-items:center;
+    flex-shrink:0;
+  }
+  .brand-plate img{display:block;height:34px;width:auto;}
+
+  .user-badge{
+    margin-left:auto; display:flex; align-items:center; gap:10px;
+    font-size:12.5px; color:var(--paper-dim);
+  }
+  .user-badge .who{display:flex;flex-direction:column;line-height:1.25;text-align:right;}
+  .user-badge .who b{color:var(--white);font-size:13px;}
+  .user-badge .role-tag{
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--caution);
+  }
+  .user-badge button{
+    font-family:'Inter',sans-serif;font-size:12px;font-weight:600;background:transparent;
+    border:1px solid rgba(255,255,255,.3);color:var(--paper-dim);padding:6px 10px;border-radius:var(--radius);cursor:pointer;
+  }
+  .user-badge button:hover{border-color:var(--white);color:var(--white);}
+
+  .admin-only{display:none;}
+  body.role-admin .admin-only{display:inline-flex;}
+  body.role-admin button.admin-only{display:inline-block;}
+  body.role-admin .table-wrap .admin-only{display:inline-flex;}
+
+  /* Login screen */
+  .login-screen{
+    position:fixed; inset:0; background:var(--ink); z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .login-card{
+    background:var(--card); border-radius:var(--radius); border-top:4px solid var(--caution);
+    width:100%; max-width:380px; padding:26px 24px;
+  }
+  .login-card .brand-plate{margin-bottom:18px;}
+  .login-card h2{font-family:'Poppins',sans-serif;font-size:22px;text-transform:uppercase;margin:0 0 4px;}
+  .login-card p.sub2{font-size:12.5px;color:var(--steel-light);margin:0 0 18px;}
+  .login-card .field{margin-bottom:12px;}
+  .login-tabs{display:flex;gap:6px;margin-bottom:16px;}
+  .login-tabs button{
+    flex:1; font-family:'Inter',sans-serif; font-weight:600; font-size:12.5px;
+    background:var(--paper-dim); border:none; padding:8px; border-radius:var(--radius); cursor:pointer; color:var(--steel);
+  }
+  .login-tabs button.active{background:var(--ink);color:var(--paper);}
+  .login-msg{font-size:12.5px; margin-top:10px; min-height:16px;}
+  .login-msg.error{color:var(--safety);}
+  .login-msg.ok{color:var(--ok);}
+
+  .filter-bar{background:var(--caution);padding:10px 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,.12);}
+  .filter-bar label{font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--paper-dim);}
+  .filter-bar select{font-family:'Inter',sans-serif;font-weight:600;font-size:13px;background:var(--paper);color:var(--ink);border:none;border-radius:var(--radius);padding:6px 10px;cursor:pointer;}
+  .filter-bar .obra-count{font-size:11px;color:var(--paper-dim);font-family:'IBM Plex Mono',monospace;}
+
+  nav.tabs{display:flex;background:var(--ink);overflow-x:auto;}
+  nav.tabs button{font-family:'Poppins',sans-serif;font-weight:700;font-size:16px;letter-spacing:.03em;text-transform:uppercase;
+    background:transparent;color:var(--paper-dim);border:none;padding:13px 20px;cursor:pointer;
+    border-right:1px solid rgba(255,255,255,.08);white-space:nowrap;transition:background .15s, color .15s;position:relative;}
+  nav.tabs button .count{font-family:'IBM Plex Mono',monospace;font-size:10px;margin-left:6px;color:var(--steel-light);
+    background:var(--paper);padding:1px 5px;border-radius:8px;vertical-align:2px;}
+  nav.tabs button.active{background:var(--paper);color:var(--ink);}
+  nav.tabs button.active .count{background:var(--caution);color:var(--ink);}
+  nav.tabs button:not(.active):hover{background:var(--steel-light);color:var(--white);}
+
+  main{max-width:1080px;margin:0 auto;padding:20px 24px 80px;}
+  .panel{display:none;}
+  .panel.active{display:block;animation:fade .18s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(3px);}to{opacity:1;transform:none;}}
+
+  .toolbar{display:flex;justify-content:space-between;align-items:flex-end;margin:18px 0 12px;flex-wrap:wrap;gap:10px;}
+  .toolbar h2{font-family:'Poppins',sans-serif;font-size:24px;text-transform:uppercase;margin:0;letter-spacing:.02em;}
+  .toolbar p{margin:2px 0 0;font-size:12.5px;color:var(--steel-light);}
+
+  button.primary{font-family:'Inter',sans-serif;font-weight:600;font-size:13px;background:var(--ink);color:var(--paper);
+    border:none;padding:10px 18px;border-radius:var(--radius);cursor:pointer;letter-spacing:.02em;}
+  button.primary:hover{background:var(--steel);}
+  button.ghost{font-family:'Inter',sans-serif;font-size:12px;background:transparent;border:1px solid var(--line);
+    color:var(--steel);padding:6px 10px;border-radius:var(--radius);cursor:pointer;}
+  button.ghost:hover{border-color:var(--steel);color:var(--ink);}
+
+  .form-card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--caution);border-radius:var(--radius);
+    padding:16px 18px;margin-bottom:20px;display:none;}
+  .form-card.open{display:block;}
+  .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;}
+  .field label{display:block;font-size:10.5px;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--steel-light);margin-bottom:4px;}
+  .field input,.field select{width:100%;font-family:'Inter',sans-serif;font-size:13.5px;padding:8px 9px;
+    border:1px solid var(--line);border-radius:var(--radius);background:var(--white);color:var(--ink);}
+  .field input:focus,.field select:focus{outline:2px solid var(--ink);outline-offset:1px;}
+  .field input[type="file"]{padding:6px 4px;font-size:12px;background:var(--card);border-style:dashed;}
+  .form-actions{margin-top:14px;display:flex;gap:8px;}
+
+  /* lookup states inside entrada form */
+  .lookup-box{margin-top:2px;}
+  .lookup-found{
+    display:none; align-items:center; gap:8px; background:rgba(72,160,86,.1); border:1px solid rgba(72,160,86,.35);
+    color:var(--ok); font-size:12.5px; padding:8px 10px; border-radius:var(--radius); margin-top:4px;
+  }
+  .lookup-found.show{display:flex;}
+  .lookup-new{
+    display:none; margin-top:10px; padding:12px; background:rgba(53,124,142,.08); border:1px dashed var(--caution); border-radius:var(--radius);
+  }
+  .lookup-new.show{display:block;}
+  .lookup-new .tag{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#245A68;margin-bottom:8px;display:block;
+  }
+
+  .item-row{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:12px; margin-bottom:10px; position:relative;
+  }
+  .item-row .item-remove{position:absolute; top:8px; right:8px;}
+  .item-row .lookup-found, .item-row .lookup-new{margin-top:8px;}
+
+  .table-wrap{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--steel-light);background:var(--paper-dim);padding:9px 12px;border-bottom:1px solid var(--line);}
+  tbody td{padding:10px 12px;border-bottom:1px solid var(--paper-dim);vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--paper);}
+  .code-tag{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;background:var(--ink);color:var(--caution);
+    padding:2px 7px;border-radius:2px;display:inline-block;}
+  .obra-tag{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;background:var(--paper-dim);color:var(--steel);
+    padding:2px 7px;border-radius:2px;display:inline-block;text-transform:uppercase;}
+  .num{font-family:'IBM Plex Mono',monospace;text-align:right;}
+  td.num,th.num{text-align:right;}
+  .row-actions{display:flex;gap:6px;justify-content:flex-end;}
+  .icon-btn{background:none;border:none;cursor:pointer;color:var(--steel-light);font-size:14px;padding:2px 4px;}
+  .icon-btn:hover{color:var(--safety);}
+
+  .status-pill{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+    padding:3px 9px;border-radius:10px;display:inline-block;}
+  .status-ok{background:rgba(72,160,86,.12);color:var(--ok);}
+  .status-alert{background:rgba(196,70,12,.14);color:var(--safety);}
+  tr.alert-row{background:rgba(196,70,12,.06);}
+  tr.alert-row:hover{background:rgba(196,70,12,.11);}
+
+  .empty{padding:36px 20px;text-align:center;color:var(--steel-light);font-size:13px;}
+  .empty .big{font-family:'Poppins',sans-serif;font-weight:700;font-size:20px;color:var(--steel);text-transform:uppercase;display:block;margin-bottom:4px;}
+
+  .alert-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    background:rgba(196,70,12,.08); border:1px solid rgba(196,70,12,.3); border-left:4px solid var(--safety);
+    border-radius:var(--radius); padding:12px 16px; margin-bottom:16px;
+  }
+  .alert-bar-text{display:flex; align-items:center; gap:9px; font-size:13px; color:var(--ink); font-weight:500;}
+  .alert-dot{width:8px;height:8px;border-radius:50%;background:var(--safety);flex-shrink:0;box-shadow:0 0 0 4px rgba(196,70,12,.18);}
+  .alert-bar-actions{display:flex;gap:8px;}
+  .notify-btn{
+    font-family:'Inter',sans-serif; font-weight:600; font-size:12.5px; border:none; border-radius:var(--radius);
+    padding:8px 14px; cursor:pointer; color:var(--white); display:inline-flex; align-items:center; gap:6px;
+  }
+  .notify-btn.wa{background:#25945A;}
+  .notify-btn.wa:hover{background:#1E7A4A;}
+  .notify-btn.mail{background:var(--caution);}
+  .notify-btn.mail:hover{background:#2A6373;}
+
+  .report-h3{
+    font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; text-transform:uppercase;
+    letter-spacing:.02em; color:var(--steel); margin:0 0 8px;
+  }
+  .report-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:16px 0 22px;}
+  .report-metrics .box{background:var(--card);border:1px solid var(--line);border-top:3px solid var(--caution);padding:12px 14px;border-radius:var(--radius);}
+  .report-metrics .box.warn{border-top-color:var(--safety);}
+  .report-metrics .box .n{font-family:'Poppins',sans-serif;font-weight:800;font-size:24px;line-height:1;color:var(--ink);}
+  .report-metrics .box .l{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--steel-light);margin-top:4px;}
+
+  @media print{
+    .filter-bar, nav.tabs, .toolbar .row-actions, #form-obra, #form-entrada, #form-saida,
+    #panel-relatorios .form-card, footer, .icon-btn, header::after{ display:none !important; }
+    header{background:var(--white) !important; color:var(--ink) !important; padding:0 0 14px;}
+    header .eyebrow{color:var(--steel) !important;}
+    .brand-plate{padding:0;}
+    body{background:var(--white);}
+    .table-wrap{border:1px solid #999;break-inside:avoid;}
+  }
+
+  footer{text-align:center;font-size:11px;color:var(--steel-light);padding:20px;font-family:'IBM Plex Mono',monospace;}
+
+  /* edit modal */
+  .modal-backdrop{
+    display:none; position:fixed; inset:0; background:rgba(27,32,36,.55); z-index:50;
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-backdrop.open{display:flex;}
+  .modal-card{
+    background:var(--card); border-radius:var(--radius); border-top:4px solid var(--caution);
+    width:100%; max-width:520px; padding:20px 22px; max-height:90vh; overflow:auto;
+  }
+  .modal-card h3{font-family:'Poppins',sans-serif;text-transform:uppercase;font-size:22px;margin:0 0 4px;}
+  .modal-card .modal-sub{font-size:12px;color:var(--steel-light);margin-bottom:14px;}
+
+  @media(max-width:640px){
+    table thead{display:none;}
+    tbody tr{display:block;border-bottom:6px solid var(--paper);padding:8px 0;}
+    tbody td{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--paper-dim);padding:7px 12px;}
+    tbody td::before{content:attr(data-label);font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;color:var(--steel-light);}
+    tbody td.num{text-align:right;}
+    .row-actions{justify-content:flex-end;width:100%;}
+  }
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <div class="brand-plate" style="display:inline-flex;"><img src="logo-turita.png" style="height:28px;" alt="Turita"></div>
+    <h2>Controle de Estoque</h2>
+    <p class="sub2">Entre com seu e-mail e senha</p>
+    <div class="login-tabs">
+      <button id="tab-login" class="active">Entrar</button>
+      <button id="tab-signup">Criar conta</button>
+    </div>
+    <div id="signup-fields" style="display:none;">
+      <div class="field"><label>Seu nome</label><input id="su-nome" placeholder="Como quer ser identificado"></div>
+    </div>
+    <div class="field"><label>E-mail</label><input id="auth-email" type="email" placeholder="voce@empresa.com"></div>
+    <div class="field"><label>Senha</label><input id="auth-senha" type="password" placeholder="••••••••"></div>
+    <div class="form-actions">
+      <button class="primary" id="btn-auth-submit" style="width:100%;justify-content:center;">Entrar</button>
+    </div>
+    <div class="login-msg" id="login-msg"></div>
+  </div>
+</div>
+
+<div id="app-shell" style="display:none;">
+
+<header>
+  <div class="header-row">
+    <div class="brand-plate"><img src="logo-turita.png" alt="Turita Desenvolvimento Imobiliário"></div>
+    <div>
+      <p class="eyebrow">Almoxarifado</p>
+      <h1>Controle de Estoque</h1>
+    </div>
+    <div class="user-badge">
+      <div class="who"><b id="user-nome">—</b><span class="role-tag" id="user-papel"></span></div>
+      <button id="btn-logout">Sair</button>
+    </div>
+  </div>
+  <p class="sub">Cadastro de obras, entradas com identificação automática de material novo, saídas por requisição e saldo com alerta de estoque mínimo.</p>
+</header>
+
+<div class="filter-bar">
+  <label for="obra-filter">Visualizando</label>
+  <select id="obra-filter"></select>
+  <span class="obra-count" id="filter-info"></span>
+</div>
+
+<nav class="tabs">
+  <button data-tab="obras" class="active">Obras <span class="count" id="count-obras">0</span></button>
+  <button data-tab="entradas">Entradas <span class="count" id="count-entradas">0</span></button>
+  <button data-tab="saidas">Saídas <span class="count" id="count-saidas">0</span></button>
+  <button data-tab="saldo">Saldo <span class="count" id="count-alertas">0</span></button>
+  <button data-tab="relatorios">Relatórios</button>
+  <button data-tab="usuarios" id="tab-usuarios-btn" style="display:none;">Usuários</button>
+</nav>
+
+<main>
+
+  <!-- ================= OBRAS ================= -->
+  <section class="panel active" id="panel-obras">
+    <div class="toolbar">
+      <div><h2>Obras</h2><p>Cadastre cada obra para organizar o estoque por canteiro</p></div>
+      <button class="primary" id="btn-open-obra">+ Nova obra</button>
+    </div>
+
+    <div class="form-card" id="form-obra">
+      <div class="form-grid">
+        <div class="field"><label>Código</label><input id="o-code" placeholder="EX: PF"></div>
+        <div class="field"><label>Nome da obra</label><input id="o-name" placeholder="Paulo Franco"></div>
+        <div class="field"><label>Endereço / Referência</label><input id="o-addr" placeholder="Opcional"></div>
+      </div>
+      <div class="form-actions">
+        <button class="primary" id="save-obra">Salvar obra</button>
+        <button class="ghost" id="cancel-obra">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl-obras">
+        <thead><tr><th>Código</th><th>Obra</th><th>Endereço</th><th class="num">Materiais</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="empty-obras" style="display:none;">
+        <span class="big">Nenhuma obra cadastrada</span>
+        Cadastre a primeira obra para começar a organizar o estoque.
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ENTRADAS ================= -->
+  <section class="panel" id="panel-entradas">
+    <div class="toolbar">
+      <div><h2>Entradas</h2><p>Uma nota, vários itens — adicione quantos materiais precisar</p></div>
+      <button class="primary" id="btn-open-entrada">+ Nova entrada</button>
+    </div>
+
+    <div class="form-card" id="form-entrada">
+      <div class="form-grid">
+        <div class="field"><label>Data</label><input id="e-date" type="date"></div>
+        <div class="field"><label>Nota fiscal / Pedido</label><input id="e-nf"></div>
+        <div class="field"><label>Fornecedor</label><input id="e-sup" list="fornecedores-datalist" autocomplete="off"><datalist id="fornecedores-datalist"></datalist></div>
+        <datalist id="materiais-datalist"></datalist>
+        <div class="field"><label>Recebido por</label><input id="e-recv"></div>
+        <div class="field"><label>Foto ou PDF da nota fiscal</label><input id="e-foto" type="file" accept="image/*,application/pdf"></div>
+      </div>
+
+      <div class="lookup-box" id="ocr-box" style="display:none;">
+        <button class="ghost" id="btn-ocr" type="button" style="margin-bottom:8px;">🔍 Ler nota/PDF (gratuito, pode errar — confira depois)</button>
+        <div id="ocr-status" style="font-size:12px;color:var(--steel-light);display:none;"></div>
+        <div id="ocr-result" style="display:none;background:rgba(53,124,142,.08);border:1px dashed var(--caution);border-radius:var(--radius);padding:10px 12px;font-size:12.5px;margin-top:6px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#245A68;margin-bottom:6px;">Preenchido automaticamente — confira antes de salvar</div>
+          <div id="ocr-summary"></div>
+          <details style="margin-top:8px;">
+            <summary style="cursor:pointer;color:var(--steel);">Ver texto lido na íntegra</summary>
+            <textarea id="ocr-raw" readonly style="width:100%;min-height:90px;margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px;border:1px solid var(--line);border-radius:var(--radius);"></textarea>
+          </details>
+        </div>
+      </div>
+
+      <h3 class="report-h3" style="margin-top:16px;">Itens desta nota</h3>
+      <div id="itens-lista"></div>
+      <button class="ghost" id="btn-add-item" type="button" style="margin-top:4px;">+ Adicionar item</button>
+
+      <div class="form-actions">
+        <button class="primary" id="save-entrada">Salvar entrada</button>
+        <button class="ghost" id="cancel-entrada">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl-entradas">
+        <thead><tr>
+          <th>Data</th><th>Obra</th><th>Código</th><th>Material</th><th class="num">Qtd.</th>
+          <th>NF/Pedido</th><th>Fornecedor</th><th>Lançado por</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="empty-entradas" style="display:none;">
+        <span class="big">Nenhuma entrada registrada</span>
+        Lance aqui os materiais recebidos no almoxarifado.
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SAÍDAS ================= -->
+  <section class="panel" id="panel-saidas">
+    <div class="toolbar">
+      <div><h2>Saídas / requisições</h2><p>Materiais retirados por funcionário ou setor</p></div>
+      <button class="primary" id="btn-open-saida">+ Nova saída</button>
+    </div>
+
+    <div class="form-card" id="form-saida">
+      <div class="form-grid">
+        <div class="field"><label>Data</label><input id="s-date" type="date"></div>
+        <div class="field"><label>Material</label><select id="s-code"></select></div>
+        <div class="field"><label>Quantidade</label><input id="s-qty" type="text" inputmode="decimal"></div>
+        <div class="field"><label>Funcionário / Setor</label><input id="s-req"></div>
+        <div class="field"><label>Finalidade</label><input id="s-purp" placeholder="Ex: laje 2º pav."></div>
+        <div class="field"><label>Autorizado por</label><input id="s-auth"></div>
+      </div>
+      <div class="form-actions">
+        <button class="primary" id="save-saida">Salvar saída</button>
+        <button class="ghost" id="cancel-saida">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl-saidas">
+        <thead><tr>
+          <th>Data</th><th>Obra</th><th>Código</th><th>Material</th><th class="num">Qtd.</th>
+          <th>Funcionário/Setor</th><th>Finalidade</th><th>Lançado por</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="empty-saidas" style="display:none;">
+        <span class="big">Nenhuma saída registrada</span>
+        Lance aqui as requisições de materiais.
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SALDO ================= -->
+  <section class="panel" id="panel-saldo">
+    <div class="toolbar">
+      <div><h2>Saldo atual</h2><p>Calculado automaticamente a partir de entradas e saídas</p></div>
+    </div>
+
+    <div class="alert-bar" id="alert-bar" style="display:none;">
+      <div class="alert-bar-text">
+        <span class="alert-dot"></span>
+        <span id="alert-bar-msg"></span>
+      </div>
+      <div class="alert-bar-actions">
+        <button class="notify-btn wa" id="btn-notify-wa">WhatsApp</button>
+        <button class="notify-btn mail" id="btn-notify-mail">E-mail</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tbl-saldo">
+        <thead><tr>
+          <th>Obra</th><th>Código</th><th>Material</th><th class="num">Entradas</th>
+          <th class="num">Saídas</th><th class="num">Saldo</th>
+          <th class="num">Mínimo</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="empty-saldo" style="display:none;">
+        <span class="big">Sem dados ainda</span>
+        Cadastre uma obra e lance a primeira entrada para ver o saldo aqui.
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= RELATÓRIOS ================= -->
+  <section class="panel" id="panel-relatorios">
+    <div class="toolbar">
+      <div><h2>Relatórios</h2><p>Estoque atual, movimentação e destaques do período</p></div>
+      <div class="row-actions">
+        <button class="ghost" id="btn-export-csv">Exportar CSV</button>
+        <button class="ghost" id="btn-print">Imprimir</button>
+      </div>
+    </div>
+
+    <div class="form-card open" style="border-left-color:var(--caution);">
+      <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));">
+        <div class="field"><label>Período de</label><input id="r-start" type="date"></div>
+        <div class="field"><label>até</label><input id="r-end" type="date"></div>
+      </div>
+    </div>
+
+    <div class="report-metrics" id="report-metrics"></div>
+
+    <h3 class="report-h3">Estoque atual</h3>
+    <div class="table-wrap" style="margin-bottom:22px;">
+      <table id="tbl-report-estoque">
+        <thead><tr><th>Obra</th><th>Código</th><th>Material</th><th class="num">Saldo</th><th class="num">Mínimo</th><th class="num">Valor unit.</th><th class="num">Valor em estoque</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr><td colspan="6" style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;color:var(--steel-light);padding:10px 12px;">Valor total em estoque</td><td class="num" id="report-total-valor" style="font-weight:700;padding:10px 12px;"></td><td></td></tr></tfoot>
+      </table>
+    </div>
+
+    <h3 class="report-h3">Materiais mais retirados no período</h3>
+    <div class="table-wrap" style="margin-bottom:22px;">
+      <table id="tbl-report-top">
+        <thead><tr><th>Obra</th><th>Código</th><th>Material</th><th class="num">Qtd. retirada</th><th class="num">Nº de retiradas</th><th class="num">Valor retirado</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="empty-report-top" style="display:none;"><span class="big">Sem saídas no período</span></div>
+    </div>
+
+    <h3 class="report-h3">Retiradas por funcionário / setor no período</h3>
+    <div class="table-wrap" style="margin-bottom:22px;">
+      <table id="tbl-report-req">
+        <thead><tr><th>Funcionário / Setor</th><th class="num">Nº de retiradas</th><th class="num">Materiais distintos</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="empty-report-req" style="display:none;"><span class="big">Sem retiradas no período</span></div>
+    </div>
+
+    <h3 class="report-h3">Recebimentos por fornecedor no período</h3>
+    <div class="table-wrap">
+      <table id="tbl-report-sup">
+        <thead><tr><th>Fornecedor</th><th class="num">Nº de entradas</th><th class="num">Materiais distintos</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="empty-report-sup" style="display:none;"><span class="big">Sem entradas no período</span></div>
+    </div>
+  </section>
+
+  <!-- ================= USUÁRIOS (admin) ================= -->
+  <section class="panel" id="panel-usuarios">
+    <div class="toolbar">
+      <div><h2>Usuários</h2><p>Quem tem acesso ao controle de estoque</p></div>
+    </div>
+    <div class="table-wrap">
+      <table id="tbl-usuarios">
+        <thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Status</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer>ALMOXARIFADO — dados no Supabase: cada pessoa entra com seu próprio login · versão 2026-08-17-DETALHE-v2</footer>
+
+<!-- Edit material modal (accessed from Saldo) -->
+<div class="modal-backdrop" id="edit-modal">
+  <div class="modal-card">
+    <h3>Editar material</h3>
+    <p class="modal-sub">Ajuste os dados cadastrais deste item</p>
+    <div class="form-grid">
+      <div class="field"><label>Obra</label><select id="edit-obra"></select></div>
+      <div class="field"><label>Código</label><input id="edit-code" disabled></div>
+      <div class="field"><label>Descrição</label><input id="edit-desc"></div>
+      <div class="field"><label>Unidade</label><input id="edit-unit"></div>
+      <div class="field"><label>Categoria</label><input id="edit-cat"></div>
+      <div class="field"><label>Estoque mínimo</label><input id="edit-min" type="text" inputmode="decimal"></div>
+      <div class="field"><label>Valor unitário de referência (R$)</label><input id="edit-price" type="text" inputmode="decimal"></div>
+      <div class="field"><label>Fornecedor padrão</label><input id="edit-sup"></div>
+    </div>
+    <div class="form-actions">
+      <button class="primary" id="edit-save">Salvar alterações</button>
+      <button class="ghost" id="edit-delete">Remover material</button>
+      <button class="ghost" id="edit-cancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="detalhe-modal">
+  <div class="modal-card">
+    <h3>Ficha do material</h3>
+    <p class="modal-sub">Dados cadastrais deste item</p>
+    <div class="form-grid" id="detalhe-conteudo" style="grid-template-columns:1fr 1fr;"></div>
+    <div class="form-actions">
+      <button class="primary admin-only" id="detalhe-editar">Editar material</button>
+      <button class="ghost" id="detalhe-fechar">Fechar</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /#app-shell -->
+
+
+<script>
+const SUPABASE_URL = 'https://rnfyancftrwxfehfxaur.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_06XgkXtUdsqKTsDn8skzqg_GFTxgxVT';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let obras = [];
+let materials = [];
+let entries = [];
+let exits = [];
+let profiles = [];
+let profilesMap = {};
+let obraFilter = 'all';
+let currentUser = null; // {id, nome, papel, email}
+
+const $ = (id) => document.getElementById(id);
+
+/* ================= AUTENTICAÇÃO ================= */
+$('tab-login').onclick = ()=>{
+  $('tab-login').classList.add('active'); $('tab-signup').classList.remove('active');
+  $('signup-fields').style.display = 'none';
+  $('btn-auth-submit').textContent = 'Entrar';
+  $('login-msg').textContent = '';
+};
+$('tab-signup').onclick = ()=>{
+  $('tab-signup').classList.add('active'); $('tab-login').classList.remove('active');
+  $('signup-fields').style.display = 'block';
+  $('btn-auth-submit').textContent = 'Criar conta';
+  $('login-msg').textContent = '';
+};
+
+$('btn-auth-submit').onclick = async ()=>{
+  const email = $('auth-email').value.trim();
+  const senha = $('auth-senha').value;
+  const msg = $('login-msg');
+  msg.className = 'login-msg';
+  if(!email || !senha){ msg.textContent = 'Preencha e-mail e senha.'; msg.classList.add('error'); return; }
+
+  if($('tab-signup').classList.contains('active')){
+    const nome = $('su-nome').value.trim();
+    if(!nome){ msg.textContent = 'Informe seu nome.'; msg.classList.add('error'); return; }
+    msg.textContent = 'Criando conta...';
+    const { data, error } = await db.auth.signUp({ email, password: senha, options: { data: { nome } } });
+    if(error){ msg.textContent = traduzErro(error.message); msg.classList.add('error'); return; }
+    if(data.session){
+      await afterLogin();
+    } else {
+      msg.textContent = 'Conta criada! Verifique seu e-mail para confirmar o acesso antes de entrar.';
+      msg.classList.add('ok');
+    }
+  } else {
+    msg.textContent = 'Entrando...';
+    const { data, error } = await db.auth.signInWithPassword({ email, password: senha });
+    if(error){ msg.textContent = traduzErro(error.message); msg.classList.add('error'); return; }
+    await afterLogin();
+  }
+};
+
+function traduzErro(m){
+  if(/Invalid login credentials/i.test(m)) return 'E-mail ou senha incorretos.';
+  if(/User already registered/i.test(m)) return 'Já existe uma conta com esse e-mail.';
+  if(/Password should be/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
+  if(/Email not confirmed/i.test(m)) return 'Confirme seu e-mail antes de entrar.';
+  return m;
+}
+
+$('btn-logout').onclick = async ()=>{
+  await db.auth.signOut();
+  currentUser = null;
+  document.body.classList.remove('role-admin');
+  $('app-shell').style.display = 'none';
+  $('login-screen').style.display = 'flex';
+  $('auth-senha').value = '';
+};
+
+async function afterLogin(){
+  const { data: { user } } = await db.auth.getUser();
+  if(!user) return;
+
+  let { data: profile } = await db.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  if(!profile){
+    // trigger pode levar um instante — tenta de novo
+    await new Promise(r=>setTimeout(r, 700));
+    const retry = await db.from('profiles').select('*').eq('id', user.id).maybeSingle();
+    profile = retry.data;
+  }
+  if(!profile){
+    $('login-msg').textContent = 'Não foi possível carregar seu perfil. Tente novamente.';
+    $('login-msg').className = 'login-msg error';
+    return;
+  }
+  if(profile.ativo === false){
+    $('login-msg').textContent = 'Seu acesso foi desativado. Fale com um administrador.';
+    $('login-msg').className = 'login-msg error';
+    await db.auth.signOut();
+    return;
+  }
+
+  currentUser = { id: user.id, email: user.email, nome: profile.nome, papel: profile.papel };
+  document.body.classList.toggle('role-admin', currentUser.papel === 'admin');
+  $('tab-usuarios-btn').style.display = currentUser.papel === 'admin' ? '' : 'none';
+  $('user-nome').textContent = currentUser.nome;
+  $('user-papel').textContent = currentUser.papel === 'admin' ? 'Administrador' : 'Usuário';
+
+  $('login-screen').style.display = 'none';
+  $('app-shell').style.display = 'block';
+  await loadAll();
+}
+
+async function checkSession(){
+  const { data: { session } } = await db.auth.getSession();
+  if(session){
+    await afterLogin();
+  }
+}
+
+/* ================= MAPEAMENTO DE DADOS ================= */
+function mapObra(r){ return { id:r.id, code:r.codigo, name:r.nome, addr:r.endereco||'' }; }
+function mapMaterial(r){ return { code:r.codigo, obraId:r.obra_id, desc:r.descricao, unit:r.unidade, cat:r.categoria||'', min:Number(r.estoque_minimo)||0, price:Number(r.valor_unitario)||0, sup:r.fornecedor_padrao||'' }; }
+function mapEntry(r){ return { id:r.id, date:r.data, code:r.material_codigo, qty:Number(r.quantidade), price:Number(r.valor_unitario)||0, nf:r.nota_fiscal||'', sup:r.fornecedor||'', recv:r.recebido_por||'', foto:r.nota_foto_url||'', by: profilesMap[r.created_by] || '—' }; }
+function mapExit(r){ return { id:r.id, date:r.data, code:r.material_codigo, qty:Number(r.quantidade), req:r.solicitante||'', purp:r.finalidade||'', auth:r.autorizado_por||'', by: profilesMap[r.created_by] || '—' }; }
+
+async function loadAll(){
+  const [obrasRes, matRes, entRes, exRes, profRes] = await Promise.all([
+    db.from('obras').select('*').order('nome'),
+    db.from('materiais').select('*'),
+    db.from('entradas').select('*'),
+    db.from('saidas').select('*'),
+    db.from('profiles').select('*')
+  ]);
+
+  profiles = profRes.data || [];
+  profilesMap = {};
+  profiles.forEach(p=>{ profilesMap[p.id] = p.nome; });
+
+  obras = (obrasRes.data || []).map(mapObra);
+  materials = (matRes.data || []).map(mapMaterial);
+  entries = (entRes.data || []).map(mapEntry);
+  exits = (exRes.data || []).map(mapExit);
+
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  $('r-start').value = firstOfMonth;
+  $('r-end').value = todayISO();
+  renderAll();
+}
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function parseMoney(v){
+  if(v===null || v===undefined) return 0;
+  let s = String(v).trim();
+  if(!s) return 0;
+  if(s.indexOf(',')>-1){ s = s.replace(/\./g,'').replace(',', '.'); }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
+function fmtNum(n){ return Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:2}); }
+function fmtMoney(n){ return Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function obraName(id){ const o = obras.find(x=>x.id===id); return o ? o.name : '(sem obra)'; }
+function obraCode(id){ const o = obras.find(x=>x.id===id); return o ? o.code : '—'; }
+function findMaterial(code){ return materials.find(m=>m.code.toLowerCase()===String(code||'').trim().toLowerCase()); }
+function materialName(code){ const m = findMaterial(code); return m ? m.desc : '(removido)'; }
+function materialObra(code){ const m = findMaterial(code); return m ? m.obraId : null; }
+
+/* ---------------- TABS ---------------- */
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    $('panel-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ---------------- FILTER BAR ---------------- */
+$('obra-filter').addEventListener('change', (e)=>{
+  obraFilter = e.target.value;
+  renderAll();
+});
+
+function renderFilterBar(){
+  const sel = $('obra-filter');
+  const cur = obraFilter;
+  sel.innerHTML = `<option value="all">Todas as obras</option>` +
+    obras.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
+  sel.value = obras.some(o=>o.id===cur) ? cur : 'all';
+  obraFilter = sel.value;
+  $('filter-info').textContent = obraFilter==='all'
+    ? `${obras.length} obra(s) cadastrada(s)`
+    : `filtrando por ${obraName(obraFilter)}`;
+}
+
+/* ---------------- OBRAS (somente admin cria/edita/remove) ---------------- */
+$('btn-open-obra').onclick = ()=>{ $('form-obra').classList.add('open'); $('o-code').focus(); };
+$('cancel-obra').onclick = ()=> closeObraForm();
+function closeObraForm(){
+  $('form-obra').classList.remove('open');
+  ['o-code','o-name','o-addr'].forEach(id=>$(id).value='');
+  delete $('save-obra').dataset.editing;
+}
+
+$('save-obra').onclick = async ()=>{
+  const name = $('o-name').value.trim();
+  const code = $('o-code').value.trim();
+  if(!name){ alert('Informe o nome da obra.'); return; }
+  const editing = $('save-obra').dataset.editing;
+
+  if(editing){
+    const { error } = await db.from('obras').update({
+      codigo: code || name.slice(0,3).toUpperCase(), nome: name, endereco: $('o-addr').value.trim(),
+      updated_by: currentUser.id, updated_at: new Date().toISOString()
+    }).eq('id', editing);
+    if(error){ alert('Erro ao salvar: ' + error.message); return; }
+  } else {
+    const { error } = await db.from('obras').insert({
+      codigo: code || name.slice(0,3).toUpperCase(), nome: name, endereco: $('o-addr').value.trim(),
+      created_by: currentUser.id
+    });
+    if(error){ alert('Erro ao salvar: ' + error.message); return; }
+  }
+  closeObraForm();
+  await loadAll();
+};
+
+function editObra(id){
+  const o = obras.find(x=>x.id===id);
+  if(!o) return;
+  $('o-code').value = o.code;
+  $('o-name').value = o.name;
+  $('o-addr').value = o.addr || '';
+  $('save-obra').dataset.editing = id;
+  $('form-obra').classList.add('open');
+}
+
+async function deleteObra(id){
+  if(materials.some(m=>m.obraId===id)){
+    alert('Não é possível remover: existem materiais cadastrados nesta obra.');
+    return;
+  }
+  if(!confirm('Remover esta obra?')) return;
+  const { error } = await db.from('obras').delete().eq('id', id);
+  if(error){ alert('Erro ao remover: ' + error.message); return; }
+  if(obraFilter===id) obraFilter='all';
+  await loadAll();
+}
+
+function renderObras(){
+  const tbody = document.querySelector('#tbl-obras tbody');
+  tbody.innerHTML = '';
+  $('empty-obras').style.display = obras.length ? 'none' : 'block';
+  obras.forEach(o=>{
+    const count = materials.filter(m=>m.obraId===o.id).length;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td data-label="Código"><span class="code-tag">${esc(o.code)}</span></td>
+      <td data-label="Obra">${esc(o.name)}</td>
+      <td data-label="Endereço">${esc(o.addr||'—')}</td>
+      <td data-label="Materiais" class="num">${count}</td>
+      <td><div class="row-actions admin-only">
+        <button class="icon-btn" title="Editar" onclick="editObra('${escJs(o.id)}')">✎</button>
+        <button class="icon-btn" title="Remover" onclick="deleteObra('${escJs(o.id)}')">✕</button>
+      </div></td>`;
+    tbody.appendChild(tr);
+  });
+  $('count-obras').textContent = obras.length;
+
+  const edSel = $('edit-obra');
+  const curEd = edSel.value;
+  edSel.innerHTML = obras.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
+  if(obras.some(o=>o.id===curEd)) edSel.value = curEd;
+  else if(obraFilter!=='all') edSel.value = obraFilter;
+
+  document.querySelectorAll('#itens-lista .item-new-obra').forEach(sel=>{
+    const cur = sel.value;
+    sel.innerHTML = obras.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
+    if(obras.some(o=>o.id===cur)) sel.value = cur;
+    else if(obraFilter!=='all') sel.value = obraFilter;
+  });
+}
+
+function filteredMaterials(){
+  return obraFilter==='all' ? materials : materials.filter(m=>m.obraId===obraFilter);
+}
+
+/* ---------------- ENTRADAS: carrinho com múltiplos itens ---------------- */
+function refreshDatalist(){
+  const dl = $('materiais-datalist');
+  const list = filteredMaterials();
+  dl.innerHTML = list.map(m=>`<option value="${esc(m.code)}">${esc(m.desc)}</option>`).join('');
+
+  const supDl = $('fornecedores-datalist');
+  const seen = new Set();
+  const sups = [];
+  entries.forEach(e=>{
+    const s = e.sup && e.sup.trim();
+    if(s && !seen.has(s.toLowerCase())){ seen.add(s.toLowerCase()); sups.push(s); }
+  });
+  sups.sort((a,b)=>a.localeCompare(b));
+  supDl.innerHTML = sups.map(s=>`<option value="${esc(s)}"></option>`).join('');
+}
+
+let itemRowCounter = 0;
+
+function criarItemRow(){
+  itemRowCounter++;
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = `
+    <div class="item-row" data-row-id="${itemRowCounter}">
+      <button type="button" class="icon-btn item-remove" title="Remover item">✕</button>
+      <div class="form-grid">
+        <div class="field"><label>Código do material</label><input class="item-code" list="materiais-datalist" placeholder="Digite ou escolha" autocomplete="off"></div>
+        <div class="field"><label>Quantidade</label><input class="item-qty" type="text" inputmode="decimal"></div>
+        <div class="field"><label>Valor unitário pago (R$)</label><input class="item-price" type="text" inputmode="decimal" placeholder="0,00"></div>
+      </div>
+      <div class="lookup-found item-found">
+        <span>✓</span> <span class="item-found-text"></span>
+      </div>
+      <div class="lookup-new item-new">
+        <span class="tag">⚠ Material não encontrado — cadastre para continuar</span>
+        <div class="form-grid">
+          <div class="field"><label>Obra</label><select class="item-new-obra"></select></div>
+          <div class="field"><label>Descrição *</label><input class="item-new-desc" placeholder="Cimento CP-II 50kg"></div>
+          <div class="field"><label>Unidade</label><input class="item-new-unit" placeholder="saco / un / m² / kg"></div>
+          <div class="field"><label>Categoria</label><input class="item-new-cat" placeholder="Opcional"></div>
+          <div class="field"><label>Estoque mínimo</label><input class="item-new-min" type="text" inputmode="decimal" placeholder="0"></div>
+        </div>
+      </div>
+    </div>`;
+  const rowEl = wrapper.firstElementChild;
+
+  const obraSel = rowEl.querySelector('.item-new-obra');
+  obraSel.innerHTML = obras.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
+  if(obraFilter!=='all') obraSel.value = obraFilter;
+
+  rowEl.querySelector('.item-code').addEventListener('input', ()=>lookupItemRow(rowEl));
+  rowEl.querySelector('.item-remove').addEventListener('click', ()=>{
+    if($('itens-lista').querySelectorAll('.item-row').length<=1){ alert('É preciso ao menos um item na nota.'); return; }
+    rowEl.remove();
+  });
+
+  $('itens-lista').appendChild(rowEl);
+  return rowEl;
+}
+
+function lookupItemRow(rowEl){
+  const code = rowEl.querySelector('.item-code').value.trim();
+  const found = code ? findMaterial(code) : null;
+  const foundBox = rowEl.querySelector('.item-found');
+  const newBox = rowEl.querySelector('.item-new');
+  if(found){
+    foundBox.classList.add('show');
+    rowEl.querySelector('.item-found-text').textContent = `${found.desc} · ${found.unit} · obra ${obraName(found.obraId)}`;
+    newBox.classList.remove('show');
+    const priceInput = rowEl.querySelector('.item-price');
+    if(!priceInput.value) priceInput.value = found.price || '';
+  } else {
+    foundBox.classList.remove('show');
+    newBox.classList.toggle('show', !!code);
+  }
+}
+
+$('btn-open-entrada').onclick = ()=>{
+  if(!obras.length){ alert('Cadastre ao menos uma obra antes de lançar entradas.'); return; }
+  $('e-date').value = todayISO();
+  refreshDatalist();
+  $('itens-lista').innerHTML = '';
+  criarItemRow();
+  $('form-entrada').classList.add('open');
+};
+$('btn-add-item').onclick = ()=>{ refreshDatalist(); criarItemRow(); };
+
+$('cancel-entrada').onclick = ()=>{
+  $('form-entrada').classList.remove('open');
+  ['e-nf','e-sup','e-recv'].forEach(id=>$(id).value='');
+  $('e-foto').value = '';
+  $('itens-lista').innerHTML = '';
+  $('ocr-box').style.display = 'none';
+  $('ocr-status').style.display = 'none';
+  $('ocr-result').style.display = 'none';
+  $('btn-ocr').disabled = false;
+  $('btn-ocr').textContent = '🔍 Ler nota/PDF (gratuito, pode errar — confira depois)';
+};
+
+$('e-foto').addEventListener('change', ()=>{
+  const hasFile = $('e-foto').files && $('e-foto').files.length > 0;
+  $('ocr-box').style.display = hasFile ? 'block' : 'none';
+  $('ocr-result').style.display = 'none';
+  $('ocr-status').style.display = 'none';
+});
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+async function renderizarPrimeiraPaginaPdf(file){
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas;
+}
+
+$('btn-ocr').addEventListener('click', async ()=>{
+  const file = $('e-foto').files && $('e-foto').files[0];
+  if(!file) return;
+  const btn = $('btn-ocr');
+  btn.disabled = true;
+  $('ocr-status').style.display = 'block';
+  $('ocr-status').textContent = 'Lendo a nota... isso pode levar alguns segundos (na primeira vez, baixa o pacote de idioma).';
+  $('ocr-result').style.display = 'none';
+  let worker = null;
+  try{
+    let entradaParaLeitura = file;
+    if(file.type === 'application/pdf'){
+      $('ocr-status').textContent = 'Convertendo o PDF em imagem...';
+      entradaParaLeitura = await renderizarPrimeiraPaginaPdf(file);
+    }
+    worker = await Tesseract.createWorker('por', 1, {
+      logger: (m)=>{
+        if(m.status === 'recognizing text'){
+          $('ocr-status').textContent = `Lendo a nota... ${Math.round((m.progress||0)*100)}%`;
+        } else if(m.status){
+          $('ocr-status').textContent = 'Preparando leitura (' + m.status + ')...';
+        }
+      }
+    });
+    const ret = await worker.recognize(entradaParaLeitura);
+    const text = (ret.data && ret.data.text) || '';
+    const parsed = parseNotaTexto(text);
+    aplicarLeituraNota(parsed, text);
+  } catch(err){
+    console.error(err);
+    $('ocr-status').style.display = 'block';
+    $('ocr-status').textContent = 'Não consegui ler esse arquivo (' + (err && err.message ? err.message : 'erro desconhecido') + '). Tente uma foto/PDF mais nítido ou preencha manualmente.';
+  } finally {
+    if(worker){ try{ await worker.terminate(); }catch(e){} }
+    btn.disabled = false;
+  }
+});
+
+function parseNotaTexto(text){
+  const dateMatch = text.match(/(\d{2})[\/.](\d{2})[\/.](\d{4})/);
+  let data = null;
+  if(dateMatch){
+    const [, dd, mm, yyyy] = dateMatch;
+    data = `${yyyy}-${mm}-${dd}`;
+  }
+
+  const nfMatch =
+    text.match(/N[ºo°]?\s*[.:]?\s*(\d{3,9})/i) ||
+    text.match(/NOTA\s*FISCAL[^\d]{0,15}(\d{3,9})/i) ||
+    text.match(/NF-?e?[^\d]{0,10}(\d{3,9})/i);
+  const numero_nf = nfMatch ? nfMatch[1] : null;
+
+  const moneyMatches = [...text.matchAll(/(?:R\$\s?)?(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}|\d{1,3}(?:,\d{3})+\.\d{2}|\d+\.\d{2})/g)]
+    .map(m=>parseMoney(m[1]))
+    .filter(n=>n>0);
+  const valor_total = moneyMatches.length ? Math.max(...moneyMatches) : null;
+
+  const linhas = text.split('\n').map(l=>l.trim()).filter(l=>l.length>=4 && /[A-Za-zÀ-ÿ]/.test(l));
+  const fornecedor = linhas.length ? linhas[0].slice(0,80) : null;
+
+  // Isola o bloco da tabela "DADOS DO PRODUTO/SERVIÇOS", cortando exatamente
+  // antes de "DADOS ADICIONAIS" — sem isso, a busca de unidade/quantidade
+  // podia "vazar" pra outras seções da nota (ex: pegar "PC 498" do número do
+  // pedido de compra nas informações complementares, achando que era a
+  // quantidade do produto).
+  let unidade_item = null;
+  let quantidade_item = null;
+  let descricao_item = null;
+  const headingMatch = text.match(/DADOS\s+DO\s+PRODUTO\s*\/?\s*SERVI[CÇ]O?S?/i);
+  let blocoProduto = '';
+  if(headingMatch){
+    const inicio = headingMatch.index + headingMatch[0].length;
+    const fimMatch = text.slice(inicio).match(/DADOS\s+ADICIONAIS/i);
+    const fim = fimMatch ? inicio + fimMatch.index : Math.min(text.length, inicio + 900);
+    blocoProduto = text.slice(inicio, fim);
+  }
+
+  if(blocoProduto){
+    // unidade de medida (UN, KG, CX, PC, PEÇ...) e a quantidade, que costuma
+    // aparecer logo depois da unidade na mesma linha da tabela.
+    const unidadesConhecidas = ['UN','UND','PC','PCT','PEC','PEÇ','CX','KG','KGF','GR','MT','M2','M3','LT','SC','PAR','ROL','RL','GL','DZ','CM','TON','L'];
+    const tokens = blocoProduto.split(/\s+/);
+    let unidadeIdx = -1;
+    for(let i=0;i<tokens.length;i++){
+      const limpoTok = tokens[i].replace(/[^A-Za-zÀ-ÿ0-9]/g,'').toUpperCase();
+      if(unidadesConhecidas.includes(limpoTok)){ unidade_item = limpoTok.toLowerCase(); unidadeIdx = i; break; }
+    }
+    if(unidadeIdx > -1){
+      for(let j=unidadeIdx+1; j<tokens.length && j<unidadeIdx+4; j++){
+        const numTok = tokens[j].replace(/[^\d.,]/g,'');
+        if(!numTok || !/\d/.test(numTok)) continue;
+        const val = parseMoney(numTok);
+        if(val>0 && val<100000){ quantidade_item = val; break; }
+      }
+    }
+
+    // descrição: a primeira linha do bloco é sempre o cabeçalho da tabela
+    // (Código, Descrição, NCM, CST, CFOP, Un., Quant...) — mesmo quando o OCR
+    // bagunça essas palavras — então ela é sempre descartada. Depois disso,
+    // junta as linhas seguintes de texto até formar uma descrição razoável.
+    let blocoLinhas = blocoProduto.split('\n').map(l=>l.trim()).filter(Boolean).slice(1);
+    const cabecalhoColuna = /^(C[OÓ]DIGO|DESCRI[CÇ][AÃ]O|NCM\s*\/?\s*SH?|CST|CFOP|UN(ID)?\.?|QUANT(IDADE)?\.?|VALOR|VL\.?|UNIT[AÁ]RIO|TOTAL|BC|ICMS|IPI|AL[IÍ]QUOTA)$/i;
+    const partes = [];
+    for(const linhaOriginal of blocoLinhas){
+      let limpa = linhaOriginal.replace(/[|_]+/g,' ').trim();
+      if(limpa.length<4) continue;
+      if(cabecalhoColuna.test(limpa)) continue;
+      if(/^[\d.,\s\/R$%-]+$/.test(limpa)) continue;
+      if(!/[A-Za-zÀ-ÿ]{3,}/.test(limpa)) continue;
+      limpa = limpa.replace(/^\d{2,8}\s+/, ''); // remove código numérico no início da linha
+      partes.push(limpa);
+      if(partes.join(' ').length >= 60) break;
+    }
+    if(partes.length){
+      let desc = partes.join(' ').replace(/\s{2,}/g,' ');
+      // remove a "cauda" de colunas numéricas bagunçadas pelo OCR (NCM, CST,
+      // CFOP, quantidade, valores...) que costuma vir grudada no fim da linha
+      desc = desc.replace(/(\s+\S*\d{2,}\S*){2,}\s*$/, '');
+      descricao_item = desc.trim().slice(0,100);
+    }
+  }
+
+  // 2ª tentativa (reserva) pra descrição: se não achou o bloco padrão, usa o
+  // palpite antigo — pega a linha de texto mais longa, ignorando a primeira
+  // (geralmente é o nome do fornecedor/cabeçalho) e linhas que pareçam
+  // CNPJ/endereço/data/valor.
+  if(!descricao_item){
+    const candidatas = linhas.slice(1).filter(l=>
+      !/^\d{2}[\/.]\d{2}[\/.]\d{4}/.test(l) &&
+      !/CNPJ|CPF|ENDERE|TELEFONE|CEP|BAIRRO/i.test(l) &&
+      !/^R\$?\s?[\d.,]+$/.test(l)
+    );
+    descricao_item = candidatas.length
+      ? candidatas.reduce((a,b)=> b.length>a.length ? b : a).slice(0,80)
+      : null;
+  }
+
+  return { numero_nf, data, valor_total, fornecedor, descricao_item, unidade_item, quantidade_item };
+}
+
+function aplicarLeituraNota(parsed, rawText){
+  const preenchidos = [];
+
+  if(parsed.numero_nf && !$('e-nf').value){ $('e-nf').value = parsed.numero_nf; preenchidos.push(`NF: ${parsed.numero_nf}`); }
+  if(parsed.data && !$('e-date').value){ $('e-date').value = parsed.data; preenchidos.push(`Data: ${fmtDate(parsed.data)}`); }
+  if(parsed.fornecedor && !$('e-sup').value){ $('e-sup').value = parsed.fornecedor; preenchidos.push(`Fornecedor (palpite): ${parsed.fornecedor}`); }
+  if(parsed.valor_total){ preenchidos.push(`Valor total da nota (referência): ${fmtMoney(parsed.valor_total)} — informe o valor unitário de cada item abaixo`); }
+
+  // Aplica a descrição/unidade sugeridas no PRIMEIRO item do carrinho, se ele
+  // ainda não tiver um material identificado.
+  const primeiraLinha = $('itens-lista').querySelector('.item-row');
+  if(primeiraLinha){
+    const code = primeiraLinha.querySelector('.item-code').value.trim();
+    const materialExistente = code ? findMaterial(code) : null;
+    if(!materialExistente){
+      primeiraLinha.querySelector('.item-found').classList.remove('show');
+      primeiraLinha.querySelector('.item-new').classList.add('show');
+      const descInput = primeiraLinha.querySelector('.item-new-desc');
+      if(parsed.descricao_item && !descInput.value){
+        descInput.value = parsed.descricao_item;
+        preenchidos.push(`Descrição sugerida (1º item): ${parsed.descricao_item} (confira e complete o código)`);
+      }
+      const unitInput = primeiraLinha.querySelector('.item-new-unit');
+      if(parsed.unidade_item && !unitInput.value){
+        unitInput.value = parsed.unidade_item;
+        preenchidos.push(`Unidade sugerida (1º item): ${parsed.unidade_item}`);
+      }
+    }
+  }
+
+  $('ocr-status').style.display = 'none';
+  $('ocr-result').style.display = 'block';
+  $('ocr-summary').innerHTML = preenchidos.length
+    ? preenchidos.map(p=>`• ${esc(p)}`).join('<br>')
+    : 'Não consegui identificar campos com segurança — confira o texto lido abaixo e preencha manualmente.';
+  $('ocr-raw').value = rawText;
+}
+
+$('save-entrada').onclick = async ()=>{
+  const nfVal = $('e-nf').value.trim();
+  const supVal = $('e-sup').value.trim();
+  const dataVal = $('e-date').value || todayISO();
+  const recv = $('e-recv').value.trim();
+  const linhas = [...$('itens-lista').querySelectorAll('.item-row')];
+  if(!linhas.length){ alert('Adicione ao menos um item.'); return; }
+
+  const itens = [];
+  for(const rowEl of linhas){
+    const code = rowEl.querySelector('.item-code').value.trim();
+    const qty = parseMoney(rowEl.querySelector('.item-qty').value);
+    const price = parseMoney(rowEl.querySelector('.item-price').value);
+    if(!code){ alert('Preencha o código de todos os itens.'); return; }
+    if(!qty){ alert(`Informe a quantidade do item "${code}".`); return; }
+
+    let material = findMaterial(code);
+    let novoMaterial = null;
+    if(!material){
+      const desc = rowEl.querySelector('.item-new-desc').value.trim();
+      const obraId = rowEl.querySelector('.item-new-obra').value;
+      if(!desc){ alert(`O item "${code}" é novo — informe ao menos a descrição para cadastrá-lo.`); return; }
+      if(!obraId){ alert(`Selecione a obra do item "${code}".`); return; }
+      novoMaterial = {
+        codigo: code, obra_id: obraId, descricao: desc,
+        unidade: rowEl.querySelector('.item-new-unit').value.trim() || 'un',
+        categoria: rowEl.querySelector('.item-new-cat').value.trim(),
+        estoque_minimo: parseMoney(rowEl.querySelector('.item-new-min').value),
+        valor_unitario: price,
+        created_by: currentUser.id
+      };
+    }
+    itens.push({ code, qty, price, novoMaterial });
+  }
+
+  // trava de duplicidade (material + NF + fornecedor), igual antes, aplicada a cada item
+  if(nfVal && supVal){
+    for(const it of itens){
+      const dup = entries.some(e =>
+        e.code.toLowerCase()===it.code.toLowerCase() &&
+        e.nf.trim().toLowerCase()===nfVal.toLowerCase() &&
+        e.sup.trim().toLowerCase()===supVal.toLowerCase()
+      );
+      if(dup){
+        alert(`Já existe uma entrada do material "${it.code}" com essa mesma NF e fornecedor — confira se não é um lançamento duplicado.`);
+        return;
+      }
+    }
+  }
+
+  // cadastra primeiro os materiais novos
+  for(const it of itens){
+    if(it.novoMaterial){
+      const { error } = await db.from('materiais').insert(it.novoMaterial);
+      if(error){ alert(`Erro ao cadastrar o material "${it.code}": ` + error.message); return; }
+    }
+  }
+
+  const fotoUrl = await uploadNotaFoto(nfVal || 'entrada');
+
+  const registros = itens.map(it => ({
+    material_codigo: it.code, data: dataVal, quantidade: it.qty,
+    valor_unitario: it.price, nota_fiscal: nfVal, fornecedor: supVal,
+    recebido_por: recv, nota_foto_url: fotoUrl, created_by: currentUser.id
+  }));
+  const { error } = await db.from('entradas').insert(registros);
+  if(error){ alert('Erro ao salvar as entradas: ' + error.message); return; }
+
+  $('cancel-entrada').click();
+  await loadAll();
+};
+
+async function uploadNotaFoto(referencia){
+  const input = $('e-foto');
+  const file = input.files && input.files[0];
+  if(!file) return null;
+  const extFromName = (file.name.split('.').pop() || '').toLowerCase();
+  const extFromType = (file.type && file.type.split('/')[1]) || '';
+  const ext = extFromName && extFromName.length <= 5 ? extFromName : (extFromType || 'jpg');
+  const contentType = file.type === 'application/pdf'
+    ? 'application/pdf'
+    : (file.type && file.type.startsWith('image/') ? file.type : `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+  const path = `${referencia}-${Date.now()}-${uid()}.${ext}`;
+  const { error: upErr } = await db.storage.from('notas-fiscais').upload(path, file, {
+    contentType,
+    cacheControl: '3600',
+    upsert: false
+  });
+  if(upErr){
+    alert('Entrada será salva, mas o envio do arquivo falhou: ' + upErr.message);
+    return null;
+  }
+  const { data } = db.storage.from('notas-fiscais').getPublicUrl(path);
+  return data ? data.publicUrl : null;
+}
+
+async function deleteEntry(id){
+  if(!confirm('Remover esta entrada?')) return;
+  const { error } = await db.from('entradas').delete().eq('id', id);
+  if(error){ alert('Erro ao remover: ' + error.message); return; }
+  await loadAll();
+}
+
+function filteredEntries(){
+  return obraFilter==='all' ? entries : entries.filter(e=>materialObra(e.code)===obraFilter);
+}
+
+function renderEntries(){
+  const list = filteredEntries();
+  const tbody = document.querySelector('#tbl-entradas tbody');
+  tbody.innerHTML = '';
+  $('empty-entradas').style.display = list.length ? 'none' : 'block';
+  [...list].sort((a,b)=>b.date.localeCompare(a.date)).forEach(e=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td data-label="Data">${fmtDate(e.date)}</td>
+      <td data-label="Obra"><span class="obra-tag">${esc(obraCode(materialObra(e.code)))}</span></td>
+      <td data-label="Código"><span class="code-tag">${esc(e.code)}</span></td>
+      <td data-label="Material"><a href="#" class="obra-tag" style="text-decoration:none;background:none;border:1px solid var(--line);color:var(--ink);font-family:'Inter',sans-serif;font-size:13px;text-transform:none;letter-spacing:normal;padding:2px 6px;" onclick="abrirDetalheMaterial('${escJs(e.code)}'); return false;">${esc(materialName(e.code))}</a></td>
+      <td data-label="Qtd." class="num">${fmtNum(e.qty)}</td>
+      <td data-label="NF/Pedido">${esc(e.nf||'—')} ${e.foto?`<a href="${esc(e.foto)}" target="_blank" rel="noopener" class="obra-tag" style="text-decoration:none;">📎 ver</a>`:''}</td>
+      <td data-label="Fornecedor">${esc(e.sup||'—')}</td>
+      <td data-label="Lançado por">${esc(e.by)}</td>
+      <td><div class="row-actions"><button class="icon-btn" title="Remover" onclick="deleteEntry('${escJs(e.id)}')">✕</button></div></td>`;
+    tbody.appendChild(tr);
+  });
+  $('count-entradas').textContent = list.length;
+}
+
+/* ---------------- SAÍDAS ---------------- */
+$('btn-open-saida').onclick = ()=>{
+  if(!filteredMaterials().length){ alert('Ainda não há materiais cadastrados (lance uma entrada primeiro).'); return; }
+  $('s-date').value = todayISO();
+  const sel = $('s-code');
+  sel.innerHTML = filteredMaterials().map(m=>`<option value="${esc(m.code)}">${obraFilter==='all'?esc(obraName(m.obraId))+' · ':''}${esc(m.code)} — ${esc(m.desc)}</option>`).join('');
+  $('form-saida').classList.add('open');
+};
+$('cancel-saida').onclick = ()=>{
+  $('form-saida').classList.remove('open');
+  ['s-req','s-purp','s-auth','s-qty'].forEach(id=>$(id).value='');
+};
+
+$('save-saida').onclick = async ()=>{
+  const code = $('s-code').value;
+  const qty = parseMoney($('s-qty').value);
+  if(!code || !qty){ alert('Selecione o material e informe a quantidade.'); return; }
+  const { error } = await db.from('saidas').insert({
+    material_codigo: code, data: $('s-date').value || todayISO(), quantidade: qty,
+    solicitante: $('s-req').value.trim(), finalidade: $('s-purp').value.trim(), autorizado_por: $('s-auth').value.trim(),
+    created_by: currentUser.id
+  });
+  if(error){ alert('Erro ao salvar saída: ' + error.message); return; }
+  $('cancel-saida').click();
+  await loadAll();
+};
+
+async function deleteExit(id){
+  if(!confirm('Remover esta saída?')) return;
+  const { error } = await db.from('saidas').delete().eq('id', id);
+  if(error){ alert('Erro ao remover: ' + error.message); return; }
+  await loadAll();
+}
+
+function filteredExits(){
+  return obraFilter==='all' ? exits : exits.filter(e=>materialObra(e.code)===obraFilter);
+}
+
+function renderExits(){
+  const list = filteredExits();
+  const tbody = document.querySelector('#tbl-saidas tbody');
+  tbody.innerHTML = '';
+  $('empty-saidas').style.display = list.length ? 'none' : 'block';
+  [...list].sort((a,b)=>b.date.localeCompare(a.date)).forEach(e=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td data-label="Data">${fmtDate(e.date)}</td>
+      <td data-label="Obra"><span class="obra-tag">${esc(obraCode(materialObra(e.code)))}</span></td>
+      <td data-label="Código"><span class="code-tag">${esc(e.code)}</span></td>
+      <td data-label="Material"><a href="#" class="obra-tag" style="text-decoration:none;background:none;border:1px solid var(--line);color:var(--ink);font-family:'Inter',sans-serif;font-size:13px;text-transform:none;letter-spacing:normal;padding:2px 6px;" onclick="abrirDetalheMaterial('${escJs(e.code)}'); return false;">${esc(materialName(e.code))}</a></td>
+      <td data-label="Qtd." class="num">${fmtNum(e.qty)}</td>
+      <td data-label="Funcionário/Setor">${esc(e.req||'—')}</td>
+      <td data-label="Finalidade">${esc(e.purp||'—')}</td>
+      <td data-label="Lançado por">${esc(e.by)}</td>
+      <td><div class="row-actions"><button class="icon-btn" title="Remover" onclick="deleteExit('${escJs(e.id)}')">✕</button></div></td>`;
+    tbody.appendChild(tr);
+  });
+  $('count-saidas').textContent = list.length;
+}
+
+/* ---------------- SALDO ---------------- */
+function renderSaldo(){
+  const list = filteredMaterials();
+  const tbody = document.querySelector('#tbl-saldo tbody');
+  tbody.innerHTML = '';
+  $('empty-saldo').style.display = list.length ? 'none' : 'block';
+
+  let alertCount = 0;
+  const rows = list.map(m=>{
+    const totalIn = entries.filter(e=>e.code===m.code).reduce((s,e)=>s+e.qty,0);
+    const totalOut = exits.filter(e=>e.code===m.code).reduce((s,e)=>s+e.qty,0);
+    const saldo = totalIn - totalOut;
+    const isAlert = saldo <= m.min;
+    if(isAlert) alertCount++;
+    return {m, totalIn, totalOut, saldo, isAlert};
+  });
+
+  rows.sort((a,b)=> (b.isAlert - a.isAlert) || a.m.desc.localeCompare(b.m.desc));
+
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    if(r.isAlert) tr.classList.add('alert-row');
+    tr.innerHTML = `
+      <td data-label="Obra"><span class="obra-tag">${esc(obraCode(r.m.obraId))}</span></td>
+      <td data-label="Código"><span class="code-tag">${esc(r.m.code)}</span></td>
+      <td data-label="Material">${esc(r.m.desc)}</td>
+      <td data-label="Entradas" class="num">${fmtNum(r.totalIn)}</td>
+      <td data-label="Saídas" class="num">${fmtNum(r.totalOut)}</td>
+      <td data-label="Saldo" class="num"><strong>${fmtNum(r.saldo)} ${esc(r.m.unit)}</strong></td>
+      <td data-label="Mínimo" class="num">${fmtNum(r.m.min)}</td>
+      <td data-label="Status"><span class="status-pill ${r.isAlert?'status-alert':'status-ok'}">${r.isAlert?'⚠ Alerta':'OK'}</span></td>
+      <td><div class="row-actions admin-only"><button class="icon-btn" title="Editar material" onclick="openEditModal('${escJs(r.m.code)}')">✎</button></div></td>`;
+    tbody.appendChild(tr);
+  });
+
+  $('count-alertas').textContent = alertCount;
+  renderAlertBar(rows.filter(r=>r.isAlert));
+}
+
+function renderAlertBar(alertRows){
+  const bar = $('alert-bar');
+  if(!alertRows.length){ bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  $('alert-bar-msg').textContent = alertRows.length===1
+    ? '1 material abaixo do estoque mínimo'
+    : `${alertRows.length} materiais abaixo do estoque mínimo`;
+
+  const lines = alertRows.map(r=>
+    `• ${r.m.desc} (${r.m.code}) — obra ${obraName(r.m.obraId)}: saldo ${fmtNum(r.saldo)} ${r.m.unit}, mínimo ${fmtNum(r.m.min)}`
+  );
+  const header = alertRows.length===1
+    ? '⚠️ Estoque mínimo atingido:'
+    : `⚠️ ${alertRows.length} materiais no estoque mínimo:`;
+  const message = [header, '', ...lines].join('\n');
+
+  $('btn-notify-wa').onclick = ()=>{
+    window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(message), '_blank');
+  };
+  $('btn-notify-mail').onclick = ()=>{
+    const subject = alertRows.length===1 ? 'Alerta de estoque mínimo' : `Alerta de estoque mínimo — ${alertRows.length} itens`;
+    window.location.href = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(message);
+  };
+}
+
+/* ---------------- EDIT MODAL (somente admin) ---------------- */
+function abrirDetalheMaterial(code){
+  const m = findMaterial(code);
+  if(!m){ alert('Material não encontrado (pode ter sido removido do cadastro).'); return; }
+  const totalIn = entries.filter(e=>e.code===m.code).reduce((s,e)=>s+e.qty,0);
+  const totalOut = exits.filter(e=>e.code===m.code).reduce((s,e)=>s+e.qty,0);
+  const saldo = totalIn - totalOut;
+  const campo = (rotulo, valor) => `
+    <div class="field"><label>${esc(rotulo)}</label><div style="padding:8px 9px;border:1px solid var(--line);border-radius:var(--radius);background:var(--white);font-size:13.5px;min-height:34px;">${valor}</div></div>`;
+  $('detalhe-conteudo').innerHTML = [
+    campo('Código', `<span class="code-tag">${esc(m.code)}</span>`),
+    campo('Obra', `<span class="obra-tag">${esc(obraCode(m.obraId))}</span> ${esc(obraName(m.obraId))}`),
+    campo('Descrição', esc(m.desc)),
+    campo('Unidade', esc(m.unit)),
+    campo('Categoria', esc(m.cat || '—')),
+    campo('Fornecedor padrão', esc(m.sup || '—')),
+    campo('Estoque mínimo', fmtNum(m.min) + ' ' + esc(m.unit)),
+    campo('Saldo atual', `<strong>${fmtNum(saldo)} ${esc(m.unit)}</strong> ${saldo<=m.min?'<span class="status-pill status-alert" style="margin-left:6px;">⚠ Alerta</span>':''}`),
+    campo('Valor unitário de referência', fmtMoney(m.price)),
+  ].join('');
+  $('detalhe-editar').onclick = ()=>{ $('detalhe-modal').classList.remove('open'); openEditModal(m.code); };
+  $('detalhe-modal').classList.add('open');
+}
+$('detalhe-fechar').onclick = ()=> $('detalhe-modal').classList.remove('open');
+$('detalhe-modal').addEventListener('click',(e)=>{ if(e.target===$('detalhe-modal')) $('detalhe-modal').classList.remove('open'); });
+
+function openEditModal(code){
+  if(currentUser.papel !== 'admin') return;
+  const m = findMaterial(code);
+  if(!m) return;
+  const selObra = $('edit-obra');
+  selObra.innerHTML = obras.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
+  selObra.value = m.obraId;
+  $('edit-code').value = m.code;
+  $('edit-desc').value = m.desc;
+  $('edit-unit').value = m.unit;
+  $('edit-cat').value = m.cat;
+  $('edit-min').value = m.min;
+  $('edit-price').value = m.price || 0;
+  $('edit-sup').value = m.sup;
+  $('edit-save').dataset.code = code;
+  $('edit-modal').classList.add('open');
+}
+$('edit-cancel').onclick = ()=> $('edit-modal').classList.remove('open');
+$('edit-modal').addEventListener('click',(e)=>{ if(e.target===$('edit-modal')) $('edit-modal').classList.remove('open'); });
+
+document.addEventListener('keydown',(e)=>{
+  if(e.key === 'Escape'){
+    document.querySelectorAll('.modal-backdrop.open').forEach(m=>m.classList.remove('open'));
+  }
+});
+
+$('edit-save').onclick = async ()=>{
+  const code = $('edit-save').dataset.code;
+  const desc = $('edit-desc').value.trim();
+  if(!desc){ alert('A descrição não pode ficar em branco.'); return; }
+  const { error } = await db.from('materiais').update({
+    obra_id: $('edit-obra').value,
+    descricao: desc,
+    unidade: $('edit-unit').value.trim() || 'un',
+    categoria: $('edit-cat').value.trim(),
+    estoque_minimo: parseMoney($('edit-min').value),
+    valor_unitario: parseMoney($('edit-price').value),
+    fornecedor_padrao: $('edit-sup').value.trim(),
+    updated_by: currentUser.id, updated_at: new Date().toISOString()
+  }).eq('codigo', code);
+  if(error){ alert('Erro ao salvar: ' + error.message); return; }
+  $('edit-modal').classList.remove('open');
+  await loadAll();
+};
+
+$('edit-delete').onclick = async ()=>{
+  const code = $('edit-save').dataset.code;
+  if(!confirm('Remover este material do cadastro? Entradas/saídas já lançadas continuam no histórico.')) return;
+  const { error } = await db.from('materiais').delete().eq('codigo', code);
+  if(error){ alert('Erro ao remover: ' + error.message); return; }
+  $('edit-modal').classList.remove('open');
+  await loadAll();
+};
+
+/* ---------------- USUÁRIOS (somente admin) ---------------- */
+function renderUsuarios(){
+  if(currentUser.papel !== 'admin') return;
+  const tbody = document.querySelector('#tbl-usuarios tbody');
+  tbody.innerHTML = profiles.map(p=>`
+    <tr>
+      <td data-label="Nome">${esc(p.nome)}${p.id===currentUser.id?' <span class="obra-tag">você</span>':''}</td>
+      <td data-label="E-mail">${esc(p.email||'')}</td>
+      <td data-label="Papel"><span class="status-pill ${p.papel==='admin'?'status-alert':'status-ok'}">${p.papel==='admin'?'Admin':'Usuário'}</span></td>
+      <td data-label="Status">${p.ativo===false?'Desativado':'Ativo'}</td>
+      <td><div class="row-actions">
+        ${p.id!==currentUser.id ? `
+          <button class="icon-btn" title="Alternar papel" onclick="toggleUserRole('${escJs(p.id)}','${p.papel}')">${p.papel==='admin'?'⇩':'⇧'}</button>
+          <button class="icon-btn" title="Ativar/Desativar" onclick="toggleUserActive('${escJs(p.id)}', ${p.ativo===false})">${p.ativo===false?'✓':'✕'}</button>
+        ` : ''}
+      </div></td>
+    </tr>`).join('');
+}
+
+async function toggleUserRole(id, currentRole){
+  const novo = currentRole === 'admin' ? 'usuario' : 'admin';
+  const { error } = await db.from('profiles').update({ papel: novo }).eq('id', id);
+  if(error){ alert('Erro: ' + error.message); return; }
+  await loadAll();
+  renderUsuarios();
+}
+async function toggleUserActive(id, reativar){
+  const { error } = await db.from('profiles').update({ ativo: reativar }).eq('id', id);
+  if(error){ alert('Erro: ' + error.message); return; }
+  await loadAll();
+  renderUsuarios();
+}
+
+function esc(str){ return String(str??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escJs(str){ return String(str??'').replace(/'/g,"\\'"); }
+
+/* ---------------- RELATÓRIOS ---------------- */
+function inPeriod(dateStr){
+  const start = $('r-start').value;
+  const end = $('r-end').value;
+  if(start && dateStr < start) return false;
+  if(end && dateStr > end) return false;
+  return true;
+}
+
+$('r-start').addEventListener('change', renderRelatorios);
+$('r-end').addEventListener('change', renderRelatorios);
+
+/* Custo real por lote (FIFO): cada entrada é um "lote" com seu próprio preço.
+   As saídas consomem primeiro os lotes mais antigos. */
+function fifoParaMaterial(code){
+  const lotes = entries.filter(e=>e.code===code)
+    .slice().sort((a,b)=> a.date.localeCompare(b.date) || String(a.id).localeCompare(String(b.id)))
+    .map(e=>({ restante:e.qty, preco:e.price||0 }));
+  const saidasList = exits.filter(e=>e.code===code)
+    .slice().sort((a,b)=> a.date.localeCompare(b.date) || String(a.id).localeCompare(String(b.id)));
+
+  const custoPorSaida = {};
+  saidasList.forEach(s=>{
+    let falta = s.qty;
+    let custo = 0;
+    for(const lote of lotes){
+      if(falta<=0) break;
+      if(lote.restante<=0) continue;
+      const usa = Math.min(lote.restante, falta);
+      lote.restante -= usa;
+      falta -= usa;
+      custo += usa*lote.preco;
+    }
+    if(falta>0){
+      const ultimoPreco = lotes.length ? lotes[lotes.length-1].preco : 0;
+      custo += falta*ultimoPreco;
+    }
+    custoPorSaida[s.id] = custo;
+  });
+
+  const valorEmEstoque = lotes.reduce((s,l)=> s + l.restante*l.preco, 0);
+  return { valorEmEstoque, custoPorSaida };
+}
+const fifoCacheMap = {};
+function fifo(code){
+  if(!fifoCacheMap[code]) fifoCacheMap[code] = fifoParaMaterial(code);
+  return fifoCacheMap[code];
+}
+
+function renderRelatorios(){
+  for(const k in fifoCacheMap) delete fifoCacheMap[k]; // recalcula a cada render
+
+  const mats = filteredMaterials();
+  const entPeriod = filteredEntries().filter(e=>inPeriod(e.date));
+  const exPeriod = filteredExits().filter(e=>inPeriod(e.date));
+
+  const stockRows = mats.map(m=>{
+    const totalIn = entries.filter(e=>e.code===m.code).reduce((s,e)=>s+e.qty,0);
+    const totalOut = exits.filter(e=>e.code===m.code).reduce((s,e)=>s+e.qty,0);
+    const saldo = totalIn - totalOut;
+    return {m, saldo, isAlert: saldo <= m.min};
+  }).sort((a,b)=> (b.isAlert - a.isAlert) || a.m.desc.localeCompare(b.m.desc));
+
+  const alertCount = stockRows.filter(r=>r.isAlert).length;
+  const valorTotalEstoque = stockRows.reduce((s,r)=> s + fifo(r.m.code).valorEmEstoque, 0);
+  const fornecedoresPeriodo = new Set(entPeriod.map(e=>e.sup.trim().toLowerCase()).filter(Boolean));
+
+  $('report-metrics').innerHTML = `
+    <div class="box"><div class="n">${mats.length}</div><div class="l">Materiais cadastrados</div></div>
+    <div class="box ${alertCount?'warn':''}"><div class="n">${alertCount}</div><div class="l">Em estoque mínimo</div></div>
+    <div class="box"><div class="n">${entPeriod.length}</div><div class="l">Entradas no período</div></div>
+    <div class="box"><div class="n">${exPeriod.length}</div><div class="l">Saídas no período</div></div>
+    <div class="box"><div class="n">${fornecedoresPeriodo.size}</div><div class="l">Fornecedores no período</div></div>
+    <div class="box"><div class="n" style="font-size:19px;">${fmtMoney(valorTotalEstoque)}</div><div class="l">Valor total em estoque</div></div>
+  `;
+  $('report-total-valor').textContent = fmtMoney(valorTotalEstoque);
+
+  const tbEstoque = document.querySelector('#tbl-report-estoque tbody');
+  tbEstoque.innerHTML = stockRows.map(r=>{
+    const valorEstoque = fifo(r.m.code).valorEmEstoque;
+    const valorUnitMedio = r.saldo > 0 ? valorEstoque / r.saldo : 0;
+    return `
+    <tr class="${r.isAlert?'alert-row':''}">
+      <td data-label="Obra"><span class="obra-tag">${esc(obraCode(r.m.obraId))}</span></td>
+      <td data-label="Código"><span class="code-tag">${esc(r.m.code)}</span></td>
+      <td data-label="Material">${esc(r.m.desc)}</td>
+      <td data-label="Saldo" class="num"><strong>${fmtNum(r.saldo)} ${esc(r.m.unit)}</strong></td>
+      <td data-label="Mínimo" class="num">${fmtNum(r.m.min)}</td>
+      <td data-label="Valor unit." class="num">${fmtMoney(valorUnitMedio)}</td>
+      <td data-label="Valor em estoque" class="num">${fmtMoney(valorEstoque)}</td>
+      <td data-label="Status"><span class="status-pill ${r.isAlert?'status-alert':'status-ok'}">${r.isAlert?'⚠ Alerta':'OK'}</span></td>
+    </tr>`;
+  }).join('');
+
+  const byMaterial = {};
+  exPeriod.forEach(e=>{
+    if(!byMaterial[e.code]) byMaterial[e.code] = {qty:0, count:0, valor:0};
+    byMaterial[e.code].qty += e.qty;
+    byMaterial[e.code].count += 1;
+    byMaterial[e.code].valor += (fifo(e.code).custoPorSaida[e.id] || 0);
+  });
+  const topRows = Object.entries(byMaterial)
+    .map(([code, v])=>({code, ...v, m: findMaterial(code)}))
+    .filter(r=>r.m)
+    .sort((a,b)=>b.qty-a.qty)
+    .slice(0,8);
+  $('empty-report-top').style.display = topRows.length ? 'none' : 'block';
+  document.querySelector('#tbl-report-top tbody').innerHTML = topRows.map(r=>`
+    <tr>
+      <td data-label="Obra"><span class="obra-tag">${esc(obraCode(r.m.obraId))}</span></td>
+      <td data-label="Código"><span class="code-tag">${esc(r.code)}</span></td>
+      <td data-label="Material">${esc(r.m.desc)}</td>
+      <td data-label="Qtd. retirada" class="num"><strong>${fmtNum(r.qty)} ${esc(r.m.unit)}</strong></td>
+      <td data-label="Nº de retiradas" class="num">${r.count}</td>
+      <td data-label="Valor retirado" class="num">${fmtMoney(r.valor)}</td>
+    </tr>`).join('');
+
+  const byReq = {};
+  exPeriod.forEach(e=>{
+    const key = (e.req||'—').trim() || '—';
+    if(!byReq[key]) byReq[key] = {count:0, codes:new Set()};
+    byReq[key].count += 1;
+    byReq[key].codes.add(e.code);
+  });
+  const reqRows = Object.entries(byReq).sort((a,b)=>b[1].count-a[1].count);
+  $('empty-report-req').style.display = reqRows.length ? 'none' : 'block';
+  document.querySelector('#tbl-report-req tbody').innerHTML = reqRows.map(([name,v])=>`
+    <tr>
+      <td data-label="Funcionário/Setor">${esc(name)}</td>
+      <td data-label="Nº de retiradas" class="num">${v.count}</td>
+      <td data-label="Materiais distintos" class="num">${v.codes.size}</td>
+    </tr>`).join('');
+
+  const bySup = {};
+  entPeriod.forEach(e=>{
+    const key = (e.sup||'—').trim() || '—';
+    if(!bySup[key]) bySup[key] = {count:0, codes:new Set()};
+    bySup[key].count += 1;
+    bySup[key].codes.add(e.code);
+  });
+  const supRows = Object.entries(bySup).sort((a,b)=>b[1].count-a[1].count);
+  $('empty-report-sup').style.display = supRows.length ? 'none' : 'block';
+  document.querySelector('#tbl-report-sup tbody').innerHTML = supRows.map(([name,v])=>`
+    <tr>
+      <td data-label="Fornecedor">${esc(name)}</td>
+      <td data-label="Nº de entradas" class="num">${v.count}</td>
+      <td data-label="Materiais distintos" class="num">${v.codes.size}</td>
+    </tr>`).join('');
+}
+
+$('btn-export-csv').onclick = ()=>{
+  const mats = filteredMaterials();
+  const rows = mats.map(m=>{
+    const totalIn = entries.filter(e=>e.code===m.code).reduce((s,e)=>s+e.qty,0);
+    const totalOut = exits.filter(e=>e.code===m.code).reduce((s,e)=>s+e.qty,0);
+    const saldo = totalIn - totalOut;
+    const valorEstoque = fifo(m.code).valorEmEstoque;
+    const valorUnitMedio = saldo > 0 ? valorEstoque / saldo : 0;
+    return [obraName(m.obraId), m.code, m.desc, m.unit, totalIn, totalOut, saldo, m.min, valorUnitMedio.toFixed(2), valorEstoque.toFixed(2), saldo<=m.min?'ALERTA':'OK'];
+  });
+  const header = ['Obra','Código','Material','Unidade','Entradas','Saídas','Saldo','Mínimo','Valor unitário médio','Valor em estoque (FIFO)','Status'];
+  const csv = [header, ...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `estoque-${todayISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+$('btn-print').onclick = ()=> window.print();
+
+function renderAll(){
+  renderFilterBar();
+  renderObras();
+  refreshDatalist();
+  renderEntries();
+  renderExits();
+  renderSaldo();
+  renderRelatorios();
+  renderUsuarios();
+}
+
+checkSession();
+</script>
+</body>
+</html>
