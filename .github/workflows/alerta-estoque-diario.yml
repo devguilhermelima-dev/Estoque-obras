@@ -1,0 +1,126 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    // SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY já ficam disponíveis
+    // automaticamente dentro de toda Edge Function do Supabase.
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+
+    if (!resendApiKey) {
+      return new Response(
+        JSON.stringify({ error: "RESEND_API_KEY não configurada nas secrets da função." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // usa a service role para ignorar RLS e ler tudo, já que essa função
+    // roda sozinha (sem um usuário logado por trás)
+    const supa = createClient(supabaseUrl, serviceRoleKey);
+
+    const [obrasRes, matRes, entRes, saiRes] = await Promise.all([
+      supa.from("obras").select("*"),
+      supa.from("materiais").select("*"),
+      supa.from("entradas").select("material_codigo, quantidade"),
+      supa.from("saidas").select("material_codigo, quantidade"),
+    ]);
+
+    const obras = obrasRes.data || [];
+    const materiais = matRes.data || [];
+    const entradas = entRes.data || [];
+    const saidas = saiRes.data || [];
+
+    function saldoDe(codigo: string) {
+      const totalIn = entradas.filter((e: any) => e.material_codigo === codigo)
+        .reduce((s: number, e: any) => s + Number(e.quantidade || 0), 0);
+      const totalOut = saidas.filter((e: any) => e.material_codigo === codigo)
+        .reduce((s: number, e: any) => s + Number(e.quantidade || 0), 0);
+      return totalIn - totalOut;
+    }
+
+    const relatorioEnvios: any[] = [];
+
+    for (const obra of obras) {
+      const emails = (obra.emails_alerta || "")
+        .split(",")
+        .map((e: string) => e.trim())
+        .filter(Boolean);
+      if (!emails.length) continue;
+
+      const materiaisDaObra = materiais.filter((m: any) => m.obra_id === obra.id);
+      const emAlerta = materiaisDaObra
+        .map((m: any) => ({ ...m, saldo: saldoDe(m.codigo) }))
+        .filter((m: any) => m.saldo <= Number(m.estoque_minimo || 0));
+
+      if (!emAlerta.length) continue;
+
+      const linhasHtml = emAlerta.map((m: any) => `
+        <tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;">${m.codigo}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;">${m.descricao}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">${m.saldo} ${m.unidade}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">${m.estoque_minimo} ${m.unidade}</td>
+        </tr>`).join("");
+
+      const html = `
+        <div style="font-family:Arial,sans-serif;color:#1B2024;">
+          <h2 style="margin-bottom:4px;">⚠ Alerta de estoque mínimo — ${obra.nome}</h2>
+          <p style="color:#555;font-size:13px;">${emAlerta.length} material(is) atingiram o estoque mínimo hoje.</p>
+          <table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:12px;">
+            <thead>
+              <tr style="background:#f2f2f2;">
+                <th style="padding:6px 10px;text-align:left;">Código</th>
+                <th style="padding:6px 10px;text-align:left;">Material</th>
+                <th style="padding:6px 10px;text-align:right;">Saldo atual</th>
+                <th style="padding:6px 10px;text-align:right;">Mínimo</th>
+              </tr>
+            </thead>
+            <tbody>${linhasHtml}</tbody>
+          </table>
+          <p style="color:#999;font-size:11px;margin-top:20px;">Enviado automaticamente pelo Controle de Estoque — Almoxarifado.</p>
+        </div>`;
+
+      const emailResp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Almoxarifado <onboarding@resend.dev>",
+          to: emails,
+          subject: `⚠ Estoque mínimo — ${obra.nome} (${emAlerta.length} item${emAlerta.length > 1 ? "s" : ""})`,
+          html,
+        }),
+      });
+
+      relatorioEnvios.push({
+        obra: obra.nome,
+        emails,
+        itens: emAlerta.length,
+        statusEnvio: emailResp.status,
+      });
+    }
+
+    return new Response(JSON.stringify({ ok: true, envios: relatorioEnvios }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: String(e) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
